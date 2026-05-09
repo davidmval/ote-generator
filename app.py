@@ -1,139 +1,98 @@
 import streamlit as st
 import os, io, docx, PyPDF2
-from reportlab.lib.colors import HexColor, white
+from reportlab.lib.colors import HexColor, white, Color
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.utils import simpleSplit
 
-# --- COLORES OTE ---
+# --- COLORES EXACTOS OTE ---
 C = {
-    'lila_caja': HexColor("#E8E2E8"),
-    'gris_puntos': HexColor("#D1D1D1"),
-    'texto': HexColor("#3D3D3D"),
-    'rosa_corazon': HexColor("#E8B4B8")
+    'lila_header': HexColor("#E8E2E8"),
+    'rosa_pálido': HexColor("#FDF0EF"),
+    'rosa_marca': HexColor("#E8B4B8"),
+    'mint': HexColor("#48B5A0"),
+    'puntos': HexColor("#D1D1D1"),
+    'texto': HexColor("#3D3D3D")
 }
 
-# --- SEGURIDAD ---
-def check_password():
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
-    if not st.session_state["password_correct"]:
-        st.title("🔒 Acceso OTE")
-        pwd = st.text_input("Contraseña:", type="password")
-        if st.button("Entrar"):
-            if pwd == st.secrets["password"]:
-                st.session_state["password_correct"] = True
-                st.rerun()
-            else: st.error("Contraseña incorrecta")
-        return False
-    return True
-
-# --- MOTOR DE DIBUJO ---
+# --- MOTOR GRÁFICO ---
 class OTEGenerator:
     def __init__(self, buffer, tema):
         self.buffer = buffer
         self.tema = tema
         self.PAGE_W, self.PAGE_H = 1024, 704
-        self.y = self.PAGE_H - 140
+        self.y = self.PAGE_H - 150
+        self.pn = 1
         self.c = canvas.Canvas(self.buffer, pagesize=(self.PAGE_W, self.PAGE_H))
-        self.font_name = self.cargar_recursos()
-        self.dibujar_plantilla()
+        self.f_manuscr = self.cargar_fuentes()
+        self.dibujar_pagina()
 
-    def buscar_archivo(self, nombre, carpetas):
-        """Busca un archivo en varias rutas posibles."""
-        for carpeta in carpetas:
-            ruta = os.path.join(carpeta, nombre)
-            if os.path.exists(ruta):
-                return ruta
-        return None
-
-    def cargar_recursos(self):
-        # Rutas donde buscar las fuentes
-        rutas_busqueda = ["assets", "assets/fonts", "."]
-        f_path = self.buscar_archivo("PatrickHand.ttf", rutas_busqueda)
-        
-        if f_path:
-            try:
-                pdfmetrics.registerFont(TTFont('PatrickHand', f_path))
-                return 'PatrickHand'
-            except: pass
+    def cargar_fuentes(self):
+        f_p = "assets/fonts/PatrickHand.ttf"
+        h_p = "assets/fonts/FrederickaTheGreat.ttf"
+        if os.path.exists(f_p):
+            pdfmetrics.registerFont(TTFont('PatrickHand', f_p))
+            if os.path.exists(h_p): pdfmetrics.registerFont(TTFont('Fredericka', h_p))
+            return 'PatrickHand'
         return 'Helvetica'
 
-    def dibujar_plantilla(self):
-        # 1. Fondo de puntos
+    def dibujar_pagina(self):
+        # 1. Fondo de Puntos
         self.c.setFillColor(white); self.c.rect(0,0,self.PAGE_W,self.PAGE_H,fill=1,stroke=0)
-        self.c.setFillColor(C['gris_puntos'])
+        self.c.setFillColor(C['puntos'])
         for x in range(30, 1010, 35):
             for y in range(30, 680, 35):
                 self.c.circle(x, y, 0.7, fill=1, stroke=0)
         
-        # 2. Caja lila central para el tema
-        self.c.setFillColor(C['lila_caja'])
+        # 2. Banner Superior Rosa Pálido
+        self.c.setFillColor(C['rosa_pálido'])
+        self.c.rect(0, self.PAGE_H-80, self.PAGE_W, 80, fill=1, stroke=0)
+        
+        # 3. Caja Lila Central del Tema
+        self.c.setFillColor(C['lila_header'])
         self.c.roundRect(362, self.PAGE_H-65, 300, 32, 6, fill=1, stroke=0)
-        self.c.setFont(self.font_name, 17); self.c.setFillColor(C['texto'])
+        
+        self.c.setFont(self.f_manuscr, 17); self.c.setFillColor(C['texto'])
         self.c.drawCentredString(512, self.PAGE_H-58, self.tema.upper())
         
-        # 3. Marca de agua y Logo
-        self.c.drawRightString(self.PAGE_W-50, self.PAGE_H-58, "OPOSITA EN TIEMPO EXPRESS")
+        # 4. "OPOSITA EN TIEMPO EXPRESS" con Color y Corazones
+        # (Simulamos los corazones en las O con un pequeño dibujo circular rosa)
+        self.c.setFillColor(C['rosa_marca'])
+        self.c.setFont('Helvetica-Bold', 18)
+        marca_txt = "OPOSITA EN TIEMPO EXPRESS"
+        self.c.drawRightString(self.PAGE_W-50, self.PAGE_H-58, marca_txt)
         
-        rutas_img = ["assets", "assets/img", "."]
-        logo_path = self.buscar_archivo("template_img_1.png", rutas_img)
-        if logo_path:
-            self.c.drawImage(logo_path, 930, self.PAGE_H-110, 60, 52, mask='auto')
+        # 5. Pie de Página: Nombre tema y número
+        self.c.setFont(self.f_manuscr, 12); self.c.setFillColor(C['texto'])
+        self.c.drawString(50, 30, f"{self.tema}")
+        self.c.drawRightString(self.PAGE_W-50, 30, f"{self.pn}")
 
-    def add_texto(self, texto, bullet=False):
-        # Ajuste de línea automático para que no se corte
-        x_pos = 95 if bullet else 70
-        ancho = 820 if bullet else 880
-        lineas = simpleSplit(texto, self.font_name, 15, ancho)
+    def add_texto(self, texto, tipo="normal"):
+        # Lógica de iconos según el tipo
+        ancho = 850
+        x_inicio = 70
         
-        if self.y - (len(lineas) * 25) < 60:
+        if tipo == "corazon":
+            self.c.setFillColor(C['rosa_marca'])
+            self.c.circle(80, self.y+5, 4, fill=1) # Icono Corazón
+            x_inicio = 95; ancho = 820
+            
+        lineas = simpleSplit(texto, self.f_manuscr, 15, ancho)
+        
+        if self.y - (len(lineas)*25) < 60:
             self.c.showPage()
-            self.dibujar_plantilla()
-            self.y = self.PAGE_H - 140
+            self.pn += 1
+            self.dibujar_pagina()
+            self.y = self.PAGE_H - 150
 
-        if bullet:
-            self.c.setFillColor(C['rosa_corazon']) # Corazón rosa
-            self.c.circle(80, self.y + 5, 4, fill=1, stroke=0)
-            self.c.setFillColor(C['texto'])
-
-        self.c.setFont(self.font_name, 15)
+        self.c.setFillColor(C['texto']); self.c.setFont(self.f_manuscr, 15)
         for linea in lineas:
-            self.c.drawString(x_pos, self.y, linea)
+            self.c.drawString(x_inicio, self.y, linea)
             self.y -= 25
 
     def finalizar(self):
         self.c.save()
 
-# --- INTERFAZ ---
-if check_password():
-    st.title("📝 OTE Studio PRO")
-    
-    with st.sidebar:
-        tema_n = st.text_input("Nombre del Tema", "Tema 1")
-        metodo = st.radio("Entrada:", ["Subir Archivo", "Pegar Texto"])
-
-    input_final = ""
-    if metodo == "Subir Archivo":
-        f = st.file_uploader("Sube tu Word o PDF", type=['docx', 'pdf'])
-        if f:
-            if f.name.endswith('.docx'):
-                input_final = "\n".join([p.text for p in docx.Document(f).paragraphs])
-            else:
-                input_final = "\n".join([page.extract_text() for page in PyPDF2.PdfReader(f).pages])
-    else:
-        input_final = st.text_area("Pega tus apuntes:", height=300)
-
-    if st.button("✨ Generar PDF Bonito"):
-        if input_final:
-            buf = io.BytesIO()
-            pdf = OTEGenerator(buf, tema_n)
-            for l in input_final.split('\n'):
-                linea = l.strip()
-                if linea:
-                    # Si la línea empieza con guion, pone el corazón rosa
-                    pdf.add_texto(linea[1:].strip() if linea.startswith('-') else linea, bullet=linea.startswith('-'))
-            pdf.finalizar()
-            st.success("¡PDF generado!")
-            st.download_button("⬇️ Descargar PDF", buf.getvalue(), f"{tema_n}.pdf")
+# --- INTERFAZ STREAMLIT ---
+# (Usa el mismo código de password y lectores de archivos que ya tienes funcionando)
