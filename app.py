@@ -22,11 +22,12 @@ def check_password():
             if pwd == st.secrets["password"]:
                 st.session_state["password_correct"] = True
                 st.rerun()
-            else: st.error("Clave incorrecta")
+            else:
+                st.error("Contraseña incorrecta")
         return False
     return True
 
-# --- MOTOR GRÁFICO ---
+# --- MOTOR GRÁFICO (RESTAURADO) ---
 class OTEGenerator:
     def __init__(self, buffer, tema):
         self.buffer = buffer
@@ -38,45 +39,47 @@ class OTEGenerator:
         self.dibujar_plantilla()
 
     def cargar_fuentes(self):
-        # Rutas exactas según tu carpeta assets/fonts
+        # Nombres exactos de tus archivos en assets/fonts
         f_path = "assets/fonts/PatrickHand.ttf"
-        f_header = "assets/fonts/FrederickaTheGreat.ttf"
-        
         try:
             if os.path.exists(f_path):
                 pdfmetrics.registerFont(TTFont('PatrickHand', f_path))
-            if os.path.exists(f_header):
-                pdfmetrics.registerFont(TTFont('Fredericka', f_header))
-            return 'PatrickHand'
-        except:
+                return 'PatrickHand'
             return 'Helvetica'
+        except: return 'Helvetica'
 
     def dibujar_plantilla(self):
-        # 1. Fondo de puntos
+        # 1. Fondo de puntos grises
         self.c.setFillColor(white); self.c.rect(0,0,self.PAGE_W,self.PAGE_H,fill=1,stroke=0)
         self.c.setFillColor(HexColor("#D1D1D1"))
         for x in range(30, 1010, 35):
             for y in range(30, 680, 35):
                 self.c.circle(x, y, 0.7, fill=1, stroke=0)
         
-        # 2. Caja lila del tema
+        # 2. Caja lila del tema (CENTRAL)
         self.c.setFillColor(HexColor("#E8E2E8"))
         self.c.roundRect(362, self.PAGE_H-65, 300, 32, 6, fill=1, stroke=0)
+        
         self.c.setFont(self.font_main, 18); self.c.setFillColor(HexColor("#3D3D3D"))
         self.c.drawCentredString(512, self.PAGE_H-58, self.tema.upper())
+        
+        # 3. Marca de agua derecha
         self.c.drawRightString(self.PAGE_W-50, self.PAGE_H-58, "OPOSITA EN TIEMPO EXPRESS")
-        
-        # 3. Logo
-        logo = "assets/img/template_img_1.png"
-        if os.path.exists(logo):
-            self.c.drawImage(logo, 930, self.PAGE_H-110, 60, 52, mask='auto')
 
-    def agregar_texto(self, texto, bullet=False):
-        x_pos = 95 if bullet else 70
-        ancho = 820 if bullet else 880
+    def check_espacio((alto)):
+        if self.y < (alto + 60):
+            self.c.showPage()
+            self.dibujar_plantilla()
+            self.y = self.PAGE_H - 140
+
+    def add_texto(self, texto, bullet=False):
+        # Wrapping: divide el texto si es muy largo
+        ancho_max = 820 if bullet else 880
+        x_inicio = 95 if bullet else 70
         
-        lineas = simpleSplit(texto, self.font_main, 15, ancho)
+        lineas = simpleSplit(texto, self.font_main, 15, ancho_max)
         
+        # Comprobar si caben todas las líneas de este bloque
         if self.y - (len(lineas) * 25) < 60:
             self.c.showPage()
             self.dibujar_plantilla()
@@ -89,57 +92,47 @@ class OTEGenerator:
 
         self.c.setFont(self.font_main, 15)
         for linea in lineas:
-            self.c.drawString(x_pos, self.y, linea)
+            self.c.drawString(x_inicio, self.y, linea)
             self.y -= 25
 
     def finalizar(self):
         self.c.save()
 
-# --- LECTORES DE ARCHIVOS ---
+# --- LECTORES ---
 def leer_archivo(f):
-    try:
-        if f.name.endswith('.docx'):
-            return "\n".join([p.text for p in docx.Document(f).paragraphs])
-        if f.name.endswith('.pdf'):
-            return "\n".join([page.extract_text() for page in PyPDF2.PdfReader(f).pages])
-        if f.name.endswith('.odt'):
-            doc = load(f)
-            return "\n".join([teletype.get_content(p) for p in doc.getElementsByType(text.P)])
-    except Exception as e:
-        st.error(f"Error leyendo el archivo: {e}")
+    if f.name.endswith('.docx'): return "\n".join([p.text for p in docx.Document(f).paragraphs])
+    if f.name.endswith('.pdf'): return "\n".join([p.extract_text() for p in PyPDF2.PdfReader(f).pages])
     return ""
 
-# --- INTERFAZ PRINCIPAL ---
+# --- INTERFAZ ---
 if check_password():
-    st.title("📝 OTE Studio: Generador Completo")
+    st.title("📝 OTE Studio PRO")
     
     with st.sidebar:
-        st.header("Opciones")
-        tema_n = st.text_input("Nombre del Tema:", "Tema 1 IASS")
-        metodo = st.radio("Entrada:", ["Subir Archivo", "Pegar Texto"])
+        tema_n = st.text_input("Nombre del Tema", "Tema 1 IASS")
+        metodo = st.radio("Entrada:", ["Pegar Texto", "Subir Archivo"])
 
-    contenido_final = ""
+    contenido = ""
     if metodo == "Subir Archivo":
-        archivo_subido = st.file_uploader("Sube Word, PDF u ODT", type=['docx', 'pdf', 'odt'])
-        if archivo_subido:
-            contenido_final = leer_archivo(archivo_subido)
-            if contenido_final: st.success("✅ Archivo cargado correctamente")
+        f = st.file_uploader("Sube tu Word o PDF", type=['docx', 'pdf'])
+        if f: contenido = leer_archivo(f)
     else:
-        contenido_final = st.text_area("Pega aquí el contenido:", height=350)
+        contenido = st.text_area("Pega tus apuntes:", height=300)
 
-    if st.button("✨ Generar PDF OTE"):
-        if contenido_final:
+    if st.button("✨ Generar PDF Bonito"):
+        if contenido:
             buf = io.BytesIO()
-            pdf = OTEGenerator(buf, tema_n)
-            for parrafo in contenido_final.split('\n'):
+            gen = OTEGenerator(buf, tema_n)
+            for parrafo in contenido.split('\n'):
                 linea = parrafo.strip()
-                if linea:
-                    # Detecta si es una lista para poner el corazón rosa
-                    if linea.startswith('-'):
-                        pdf.agregar_texto(linea[1:].strip(), bullet=True)
-                    else:
-                        pdf.agregar_texto(linea)
-            pdf.finalizar()
-            st.download_button("⬇️ Descargar mis Apuntes", buf.getvalue(), f"{tema_n}.pdf")
-        else:
-            st.warning("⚠️ No hay contenido para procesar.")
+                if not linea: continue
+                
+                # Usamos 'gen.y' en lugar de 'self.y'
+                if linea.startswith('-'):
+                    gen.add_texto(linea[1:].strip(), bullet=True)
+                else:
+                    gen.add_texto(linea)
+            
+            gen.finalizar()
+            st.success("¡PDF generado!")
+            st.download_button("⬇️ Descargar PDF", buf.getvalue(), f"{tema_n}.pdf")
