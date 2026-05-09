@@ -1,0 +1,5 @@
+streamlit
+reportlab
+python-docx
+odfpy
+PyPDF2
