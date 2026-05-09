@@ -2,39 +2,59 @@ import streamlit as st
 import os, io
 from reportlab.lib.colors import HexColor, white
 from reportlab.pdfgen import canvas
-# ... (resto de importaciones de docx, pdf2, etc.)
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import docx
+from odf import text, teletype
+from odf.opendocument import load
+import PyPDF2
 
-# --- FUNCIÓN DE SEGURIDAD ---
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="OTE Studio Cloud", layout="wide")
+
+# --- FUNCIÓN DE CONTRASEÑA ---
 def check_password():
-    """Devuelve True si el usuario introdujo la contraseña correcta."""
-    def password_entered():
-        # Compara con la contraseña guardada en los Secretos de la App
-        if st.session_state["password"] == st.secrets["password"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # No guardar la contraseña en sesión
-        else:
-            st.session_state["password_correct"] = False
-
     if "password_correct" not in st.session_state:
-        # Primera vez que entra
-        st.text_input("Introduce la contraseña de equipo OTE", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        # Contraseña incorrecta
-        st.text_input("Contraseña incorrecta. Inténtalo de nuevo", type="password", on_change=password_entered, key="password")
-        st.error("😕 Acceso denegado")
-        return False
-    else:
-        # Contraseña correcta
-        return True
+        st.session_state["password_correct"] = False
 
-# --- LÓGICA PRINCIPAL ---
+    if not st.session_state["password_correct"]:
+        st.title("🔒 Acceso Privado OTE")
+        pwd = st.text_input("Introduce la contraseña del equipo:", type="password")
+        if st.button("Entrar"):
+            if pwd == st.secrets["password"]:
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta")
+        return False
+    return True
+
+# --- LÓGICA DE LA APP ---
 if check_password():
-    st.title("📝 OTE Studio: Generador de Apuntes Privado")
+    st.title("📝 OTE Studio: Generador de Apuntes")
     
-    # Aquí va todo el código anterior (subida de archivos, generación de PDF, etc.)
-    # El generador respetará la plantilla de lila central y fondo de puntos
-    # y los iconos de corazones y cajas con washi tape.
+    with st.sidebar:
+        st.header("Configuración")
+        nombre_tema = st.text_input("Nombre del Tema", "Tema 1 IASS")
+        # Aseguramos que la lista de opciones nunca sea nula
+        metodo = st.radio("Método de entrada:", ["Subir Archivo", "Pegar Texto"])
+
+    # Espacio para el contenido
+    contenido = ""
     
-    nombre_tema = st.text_input("Nombre del Tema", "Tema 1 IASS")
-    # ... resto de la app ...
+    if metodo == "Subir Archivo":
+        f = st.file_uploader("Sube tu documento (docx, odt, pdf)", type=['docx', 'odt', 'pdf'])
+        if f:
+            # Aquí irían tus funciones de lectura (read_docx, read_pdf...)
+            st.success("Archivo cargado con éxito")
+            # Simulación de contenido para prueba
+            contenido = "Contenido extraído del archivo..." 
+    else:
+        contenido = st.text_area("Pega aquí el texto de tus apuntes:", height=400)
+
+    if st.button("✨ Generar mi PDF Bonito"):
+        if contenido and nombre_tema:
+            st.info(f"Generando PDF para: {nombre_tema}...")
+            # Aquí se llama a tu clase OTEGenerator con la iconografía
+        else:
+            st.warning("Por favor, introduce el contenido antes de generar.")
