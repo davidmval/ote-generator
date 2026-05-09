@@ -1,60 +1,88 @@
 import streamlit as st
-import os, io
+import os, io, docx, PyPDF2
 from reportlab.lib.colors import HexColor, white
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import docx
-from odf import text, teletype
-from odf.opendocument import load
-import PyPDF2
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="OTE Studio Cloud", layout="wide")
+st.set_page_config(page_title="OTE Studio Cloud", layout="centered")
 
-# --- FUNCIÓN DE CONTRASEÑA ---
+# --- FUNCIONES DE SEGURIDAD ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
-
     if not st.session_state["password_correct"]:
-        st.title("🔒 Acceso Privado OTE")
-        pwd = st.text_input("Introduce la contraseña del equipo:", type="password")
+        st.title("🔒 Acceso OTE")
+        pwd = st.text_input("Contraseña:", type="password")
         if st.button("Entrar"):
             if pwd == st.secrets["password"]:
                 st.session_state["password_correct"] = True
                 st.rerun()
-            else:
-                st.error("Contraseña incorrecta")
+            else: st.error("Clave incorrecta")
         return False
     return True
 
-# --- LÓGICA DE LA APP ---
-if check_password():
-    st.title("📝 OTE Studio: Generador de Apuntes")
-    
-    with st.sidebar:
-        st.header("Configuración")
-        nombre_tema = st.text_input("Nombre del Tema", "Tema 1 IASS")
-        # Aseguramos que la lista de opciones nunca sea nula
-        metodo = st.radio("Método de entrada:", ["Subir Archivo", "Pegar Texto"])
+# --- MOTOR DE DIBUJO ---
+class OTEGenerator:
+    def __init__(self, buffer, tema):
+        self.buffer = buffer
+        self.tema = tema
+        self.PAGE_W, self.PAGE_H = 1024, 704
+        self.y = self.PAGE_H - 130
+        self.c = canvas.Canvas(self.buffer, pagesize=(self.PAGE_W, self.PAGE_H))
+        self.registrar_fuentes()
+        self.dibujar_fondo()
 
-    # Espacio para el contenido
-    contenido = ""
-    
-    if metodo == "Subir Archivo":
-        f = st.file_uploader("Sube tu documento (docx, odt, pdf)", type=['docx', 'odt', 'pdf'])
-        if f:
-            # Aquí irían tus funciones de lectura (read_docx, read_pdf...)
-            st.success("Archivo cargado con éxito")
-            # Simulación de contenido para prueba
-            contenido = "Contenido extraído del archivo..." 
-    else:
-        contenido = st.text_area("Pega aquí el texto de tus apuntes:", height=400)
-
-    if st.button("✨ Generar mi PDF Bonito"):
-        if contenido and nombre_tema:
-            st.info(f"Generando PDF para: {nombre_tema}...")
-            # Aquí se llama a tu clase OTEGenerator con la iconografía
+    def registrar_fuentes(self):
+        ruta_fuente = os.path.join("assets", "fonts", "PatrickHand.ttf")
+        if os.path.exists(ruta_fuente):
+            pdfmetrics.registerFont(TTFont('PatrickHand', ruta_fuente))
         else:
-            st.warning("Por favor, introduce el contenido antes de generar.")
+            # Si no hay fuente, usamos Helvetica por defecto para no colgar la app
+            pass 
+
+    def dibujar_fondo(self):
+        # Banner lila y puntos
+        self.c.setFillColor(white); self.c.rect(0,0,self.PAGE_W,self.PAGE_H,fill=1)
+        self.c.setFillColor(HexColor("#D1D1D1"))
+        for x in range(30, 1010, 30):
+            for y in range(30, 680, 30):
+                self.c.circle(x, y, 0.6, fill=1, stroke=0)
+        self.c.setFillColor(HexColor("#E8E2E8"))
+        self.c.roundRect(362, self.PAGE_H-65, 300, 32, 6, fill=1)
+        self.c.setFont('PatrickHand' if 'PatrickHand' in pdfmetrics.getRegisteredFontNames() else 'Helvetica', 17)
+        self.c.setFillColor(HexColor("#3D3D3D"))
+        self.c.drawCentredString(512, self.PAGE_H-58, self.tema.upper())
+
+    def agregar_texto(self, txt):
+        if self.y < 50: # Salto de página
+            self.c.showPage()
+            self.dibujar_fondo()
+            self.y = self.PAGE_H - 130
+        self.c.drawString(70, self.y, txt[:100]) # Evitar textos infinitos
+        self.y -= 25
+
+    def guardar(self):
+        self.c.save()
+
+# --- APP PRINCIPAL ---
+if check_password():
+    st.title("📝 OTE Studio: Generador")
+    tema = st.text_input("Nombre del Tema:", "Tema 1")
+    texto = st.text_area("Pega tus apuntes aquí:", height=300)
+    
+    if st.button("✨ Generar PDF"):
+        if texto:
+            try:
+                buf = io.BytesIO()
+                pdf = OTEGenerator(buf, tema)
+                for linea in texto.split('\n'):
+                    if linea.strip(): pdf.agregar_texto(linea.strip())
+                pdf.guardar()
+                st.success("¡PDF generado con éxito!")
+                st.download_button("⬇️ Descargar PDF", buf.getvalue(), f"{tema}.pdf", "application/pdf")
+            except Exception as e:
+                st.error(f"Error al generar el PDF: {e}")
+        else:
+            st.warning("Escribe algo de texto primero.")
